@@ -31,7 +31,7 @@ registers {
   unsigned long r14;
   unsigned long r15;
   struct fxsave fxsave;   /* space to save floating point state */
-} rfile;
+} ;
 #else
   #error "This only works on x86_64 for now"
 #endif
