@@ -8,16 +8,21 @@
 rfile saved;
 int proc_IDs = 0;
 thread *curr_head= NULL;
+thread in_exec = NULL;
 static struct scheduler schedule = {NULL, NULL, admit, remove, next};
 scheduler sched = &schedule;
 
 
 void *admit(thread new) {
+    thread tmp;
     if (*curr_head == NULL) {
         *curr_head = new;
-    } else {
-        *tmp = *proc_list;
-        while(tmp->lib_two != NULL){
+    } 
+    else 
+    {
+        tmp = *proc_list;
+        while(tmp->lib_two != NULL)
+        {
             tmp = tmp->lib_two;
         }
         tmp->lib_two = new;
@@ -29,7 +34,7 @@ void *remove(thread victim) {
 
     /* If there is no victim or the victim is the only thread in the scheduler */
     /* stop the program */
-    if(victim == NULL || sched->next() == NULL)
+    if(victim == NULL || curr_head == NULL || *curr_head == NULL)
     {
         lwp_stop();
     }
@@ -37,7 +42,7 @@ void *remove(thread victim) {
     {
         /* if victim is the front of the scheduler, just point the scheduler
         /* to the next thread in the list */
-        if (sched->next()->tid == victim->tid)
+        if ((*curr_head)->tid == victim->tid)
         {
             *curr_head = victim->lib_two;
         }
@@ -45,7 +50,7 @@ void *remove(thread victim) {
         /* otherwise find the thread in the list and remove it there */
         else
         {
-            tmp = sched->next();
+            tmp = *curr_head;
             while(tmp != NULL && tmp->lib_two != NULL)
             {
                 /* if the next thread in the list is the victim, remove it */
@@ -56,20 +61,39 @@ void *remove(thread victim) {
                     /*  next pointer */
                     tmp->lib_two = victim->lib_two;
                     victim->lib_two = NULL;
+                    break;
                 }
+                tmp = tmp->lib_two;
             }
         }
     }
+    /* cleanup */
+    free(victim->stack);
+    free(victim);
 }
 
-thread *next() {
-    if(head != NULL){   
-        return *curr_head;
-    } 
-    else
+
+/* changes the current thread in execution */
+/* removes from head of list and saves in in_exec */
+thread next() {
+    thread tmp;
+    /* exit the program if there are no more threads in the scheduler */
+    if (curr_head == NULL || *curr_head == NULL)
     {
+        lwp_stop();
         return NULL;
     }
+    /* save the current head of the list to be executed */
+    tmp = *curr_head;
+
+    /* set the head of the current list to the next thread */
+    *curr_head = (*curr_head)->lib_two;
+
+    /* set the currently executing thread */
+    in_exec = tmp;
+
+    /* return the current thread */
+    return tmp;
 }
 
 
@@ -117,16 +141,14 @@ tid_t lwp_create(lwpfun func, void * arg, size_t stack_size)
     sched->admit(new);
 
     return new->tid;
-
-
-    
-
 }
+
 
 void  lwp_exit(void);
 {
-    /* if there is no current or next thread, stop the program */
-    if (curr_head == NULL || sched->next() == NULL || sched->next()->lib_two == NULL)
+    thread next;
+    /* Null checks for the current thread & next thread */
+    if (in_exec == NULL || curr_head == NULL || *curr_head == NULL || (*curr_head)->lib_two == NULL)
     {
         lwp_stop();
     }
@@ -135,33 +157,68 @@ void  lwp_exit(void);
     /* and load the next context */
     else
     {
-        save_context(sched->next());
-        sched->remove(sched->next());
+        /* save the context of the curretnly executing thread (unsure if necessary) */
+        save_context(&in_exec);
+
+        /* remove the thread from the scheduler */
+        sched->remove(in_exec);
+
+        /* load the context of the next thread in the scheduler */
         load_context(sched->next());
     }
 }
 
 tid_t lwp_gettid(void)
 {
-    return (*proc_list)->tid;
+    return in_exec->tid;
 }
 
 void  lwp_yield(void)
 {
-    thread curr = sched->next();
+    thread next;
+    /* save context of current thread in execution */
+    save_context(&in_exec);
+
+    /* re-admit the old thread */
+    sched->admit(in_exec);
+
+    /* if there is no current or next thread, sop the program */
+    if (in_exec == NULL || (next = sched->next()) == NULL)
+    {
+        lwp_stop()
+    }
+    else
+    {
+        /* otherwise load the context of the next thread to be executed */
+        load_context(&next);
+    }
 
 }
 
+/* selects the first thread in the list and runs it */
 void  lwp_start(void)
 {
-    thread curr = sched->next();
+    in_exec = sched->next();
     save_context(&saved);
-    load_context(&(curr->state));
+    load_context(&(in_exec->state));
 }
 
 void  lwp_stop(void)
 {
+    thread tmp;
+    /* save the old context */
     load_context(&saved);
+
+    if (in_exec != NULL)
+    {
+        free(in_exec->stack);
+        free(in_exec);
+    }
+    while((tmp = sched->next()) != NULL)
+    {
+        sched->remove(tmp);
+    }
+
 }
 
 
