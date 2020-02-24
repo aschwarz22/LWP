@@ -7,50 +7,51 @@
 
 rfile saved;
 int proc_IDs = 0;
-thread *curr_head= NULL;
+static thread curr_head = NULL;
 thread in_exec = NULL;
-static struct scheduler schedule = {NULL, NULL, admit, remove, next};
+static struct scheduler schedule = {NULL, NULL, rr_admit, rr_remove, rr_next};
 scheduler sched = &schedule;
 
 
-void *admit(thread new) {
+void *rr_admit(thread new) {
     thread tmp;
-    if (*curr_head == NULL) {
-        *curr_head = new;
+    if (curr_head == NULL) {
+        curr_head = new;
     } 
     else 
     {
-        tmp = *proc_list;
+        tmp = curr_head;
         while(tmp->lib_two != NULL)
         {
             tmp = tmp->lib_two;
         }
         tmp->lib_two = new;
     }
+    return;
 }
 
-void *remove(thread victim) {
+void *rr_remove(thread victim) {
     thread tmp;
 
     /* If there is no victim or the victim is the only thread in the scheduler */
     /* stop the program */
-    if(victim == NULL || curr_head == NULL || *curr_head == NULL)
+    if(victim == NULL || curr_head == NULL)
     {
         lwp_stop();
     }
     else
     {
-        /* if victim is the front of the scheduler, just point the scheduler
+        /* if victim is the front of the scheduler, just point the scheduler */
         /* to the next thread in the list */
-        if ((*curr_head)->tid == victim->tid)
+        if (curr_head->tid == victim->tid)
         {
-            *curr_head = victim->lib_two;
+            curr_head = victim->lib_two;
         }
 
         /* otherwise find the thread in the list and remove it there */
         else
         {
-            tmp = *curr_head;
+            tmp = curr_head;
             while(tmp != NULL && tmp->lib_two != NULL)
             {
                 /* if the next thread in the list is the victim, remove it */
@@ -75,65 +76,76 @@ void *remove(thread victim) {
 
 /* changes the current thread in execution */
 /* removes from head of list and saves in in_exec */
-thread next() {
+thread rr_next() {
     thread tmp;
     /* exit the program if there are no more threads in the scheduler */
-    if (curr_head == NULL || *curr_head == NULL)
+    if (curr_head == NULL)
     {
         lwp_stop();
         return NULL;
     }
     /* save the current head of the list to be executed */
-    tmp = *curr_head;
+    tmp = curr_head;
 
     /* set the head of the current list to the next thread */
-    *curr_head = (*curr_head)->lib_two;
+    curr_head = curr_head->lib_two;
+    
+    /* remove the current head from the linked list */
+    tmp->lib_two = NULL;
+
+
 
     /* set the currently executing thread */
     in_exec = tmp;
+
+    /* re-admit the current thread in execution */
+    rr_admit(tmp);
 
     /* return the current thread */
     return tmp;
 }
 
 
-tid_t lwp_create(lwpfun func, void * arg, size_t stack_size)
+tid_t lwp_create(lwpfun func, void * arg, size_t stacksize)
 {
 
     /* base and stack pointers */
-    unsigned long *stack_ptr
-    unsigned long *base_ptr
+    unsigned long *stack_ptr = NULL;
+    unsigned long *base_ptr = NULL;
 
     /* allocate space for the new thread */
     thread new = malloc(sizeof(struct threadinfo_st));
     new->tid = ++proc_IDs;
-    new->stack = malloc(stack_size*sizeof(long));
-    new->stacksize = (int)stack_size;
+    new->stack = (unsigned long*)malloc(stacksize*sizeof(unsigned long));
+    new->stacksize = (size_t)stacksize;
     new->state.fxsave = FPU_INIT;
 
-    /* make sure you pass an address as the argument */
-    if (arg != NULL)
+    new->state.rdi = (unsigned long)arg;
+
+    if(!new->stack)
     {
-        new->state->rdi = arg;
+        perror("no stack sorry");
+        return (tid_t)0;
     }
+    
 
     /* stack is upside-down, starting at the 'top' */
-    base_ptr = new->stack + stacksize*sizeof(long);
+    base_ptr = (unsigned long*)((unsigned long)new->stack + (unsigned long)stacksize);
+    base_ptr--;
 
     /* push return address */
-    *base_ptr = lwp_exit;
+    *base_ptr = (unsigned long)lwp_exit;
     base_ptr--;
 
     /* push function */
-    *base_ptr = func;
+    *base_ptr = (unsigned long)func;
     base_ptr--;
-
-    /* set stack fram to look like post-call, pre-function body */
+    /* set stack frame to look like post-call, pre-function body */
     stack_ptr = base_ptr;
 
     /* save stack registers */
-    new->state.rbp = base_ptr;
-    new->state.rsp = stack_ptr;
+    new->state.rbp = (unsigned long)base_ptr;
+    new->state.rsp = (unsigned long)stack_ptr;
     new->lib_one = NULL;
     new->lib_two = NULL;
 
@@ -144,11 +156,10 @@ tid_t lwp_create(lwpfun func, void * arg, size_t stack_size)
 }
 
 
-void  lwp_exit(void);
+void lwp_exit(void)
 {
-    thread next;
     /* Null checks for the current thread & next thread */
-    if (in_exec == NULL || curr_head == NULL || *curr_head == NULL || (*curr_head)->lib_two == NULL)
+    if (in_exec == NULL || curr_head == NULL || curr_head->lib_two == NULL)
     {
         lwp_stop();
     }
@@ -158,13 +169,13 @@ void  lwp_exit(void);
     else
     {
         /* save the context of the curretnly executing thread (unsure if necessary) */
-        save_context(&in_exec);
+        save_context(&(in_exec->state));
 
         /* remove the thread from the scheduler */
         sched->remove(in_exec);
 
         /* load the context of the next thread in the scheduler */
-        load_context(sched->next());
+        load_context(&(sched->next()->state));
     }
 }
 
@@ -177,20 +188,19 @@ void  lwp_yield(void)
 {
     thread next;
     /* save context of current thread in execution */
-    save_context(&in_exec);
+    save_context(&(in_exec->state));
 
-    /* re-admit the old thread */
-    sched->admit(in_exec);
+    in_exec->lib_two = NULL;
 
-    /* if there is no current or next thread, sop the program */
+    /* if there is no current or next thread, stop the program */
     if (in_exec == NULL || (next = sched->next()) == NULL)
     {
-        lwp_stop()
+        lwp_stop();
     }
     else
     {
         /* otherwise load the context of the next thread to be executed */
-        load_context(&next);
+        load_context(&(next->state));
     }
 
 }
@@ -198,9 +208,13 @@ void  lwp_yield(void)
 /* selects the first thread in the list and runs it */
 void  lwp_start(void)
 {
-    in_exec = sched->next();
+    /* pick the first thread in the scheduler */
+    thread start = sched->next();
+
+
+    /* begin executing the first thread */
     save_context(&saved);
-    load_context(&(in_exec->state));
+    load_context(&(start->state));
 }
 
 void  lwp_stop(void)
@@ -214,9 +228,11 @@ void  lwp_stop(void)
         free(in_exec->stack);
         free(in_exec);
     }
-    while((tmp = sched->next()) != NULL)
+    while(curr_head != NULL)
     {
-        sched->remove(tmp);
+        tmp = curr_head->lib_two;
+        rr_remove(curr_head);
+        curr_head = tmp;
     }
 
 }

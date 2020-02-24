@@ -31,7 +31,7 @@ registers {
   unsigned long r14;
   unsigned long r15;
   struct fxsave fxsave;   /* space to save floating point state */
-} ;
+} rfile;
 #else
   #error "This only works on x86_64 for now"
 #endif
@@ -72,6 +72,10 @@ void  lwp_stop(void);
 void  lwp_set_scheduler(scheduler fun);
 scheduler lwp_get_scheduler(void);
 thread tid2thread(tid_t tid);
+
+void* rr_admit(thread);
+void* rr_remove(thread);
+thread rr_next(void);
 
 /* Macros for stack pointer manipulation:
  *
