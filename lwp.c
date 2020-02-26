@@ -1,3 +1,4 @@
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,7 +11,7 @@ int proc_IDs = 0;
 static thread curr_head = NULL;
 thread in_exec = NULL;
 static struct scheduler schedule = {NULL, NULL, rr_admit, rr_remove, rr_next};
-scheduler sched = &schedule;
+scheduler RoundRobin = &schedule;
 
 
 void *rr_admit(thread new) {
@@ -68,7 +69,7 @@ void *rr_remove(thread victim) {
             }
         }
     }
-    /* cleanup */
+
     free(victim->stack);
     free(victim);
 }
@@ -108,17 +109,16 @@ thread rr_next() {
 
 tid_t lwp_create(lwpfun func, void * arg, size_t stacksize)
 {
-
-    /* base and stack pointers */
-    unsigned long *stack_ptr = NULL;
     unsigned long *base_ptr = NULL;
 
     /* allocate space for the new thread */
     thread new = malloc(sizeof(struct threadinfo_st));
     new->tid = ++proc_IDs;
+
+    /* allocate space for the stack */
     new->stack = (unsigned long*)malloc(stacksize*sizeof(unsigned long));
-    new->stacksize = (size_t)stacksize;
-    new->state.fxsave = FPU_INIT;
+    new->stacksize = stacksize;
+
 
     new->state.rdi = (unsigned long)arg;
 
@@ -127,10 +127,8 @@ tid_t lwp_create(lwpfun func, void * arg, size_t stacksize)
         perror("no stack sorry");
         return (tid_t)0;
     }
-    
 
-    /* stack is upside-down, starting at the 'top' */
-    base_ptr = (unsigned long*)((unsigned long)new->stack + (unsigned long)stacksize);
+    base_ptr = (unsigned long *)((unsigned long)new->stack + (unsigned long)new->stacksize*sizeof(unsigned long));
     base_ptr--;
 
     /* push return address */
@@ -138,19 +136,21 @@ tid_t lwp_create(lwpfun func, void * arg, size_t stacksize)
     base_ptr--;
 
     /* push function */
-    *base_ptr = (unsigned long)func;
+    *base_ptr = (unsigned long)func; 
     base_ptr--;
-    /* set stack frame to look like post-call, pre-function body */
-    stack_ptr = base_ptr;
 
-    /* save stack registers */
+
+    /* set stack and base registers */
+    new->state.rsp = (unsigned long)base_ptr;
     new->state.rbp = (unsigned long)base_ptr;
-    new->state.rsp = (unsigned long)stack_ptr;
-    new->lib_one = NULL;
-    new->lib_two = NULL;
 
+    /* from specs */
+    new->state.fxsave = FPU_INIT;
+
+    new->lib_two = NULL;
+    // new->state.fxsave = FPU_INIT;
     /* add to back of scheduler */
-    sched->admit(new);
+    RoundRobin->admit(new);
 
     return new->tid;
 }
@@ -158,6 +158,7 @@ tid_t lwp_create(lwpfun func, void * arg, size_t stacksize)
 
 void lwp_exit(void)
 {
+
     /* Null checks for the current thread & next thread */
     if (in_exec == NULL || curr_head == NULL || curr_head->lib_two == NULL)
     {
@@ -168,14 +169,12 @@ void lwp_exit(void)
     /* and load the next context */
     else
     {
-        /* save the context of the curretnly executing thread (unsure if necessary) */
-        save_context(&(in_exec->state));
 
         /* remove the thread from the scheduler */
-        sched->remove(in_exec);
+        RoundRobin->remove(in_exec);
 
         /* load the context of the next thread in the scheduler */
-        load_context(&(sched->next()->state));
+        load_context(&(RoundRobin->next()->state));
     }
 }
 
@@ -186,19 +185,24 @@ tid_t lwp_gettid(void)
 
 void  lwp_yield(void)
 {
+
     thread next;
     /* save context of current thread in execution */
     save_context(&(in_exec->state));
 
+
     in_exec->lib_two = NULL;
 
+
+
     /* if there is no current or next thread, stop the program */
-    if (in_exec == NULL || (next = sched->next()) == NULL)
+    if (in_exec == NULL || curr_head == NULL)
     {
         lwp_stop();
     }
     else
     {
+        next = RoundRobin->next();
         /* otherwise load the context of the next thread to be executed */
         load_context(&(next->state));
     }
@@ -208,21 +212,26 @@ void  lwp_yield(void)
 /* selects the first thread in the list and runs it */
 void  lwp_start(void)
 {
-    /* pick the first thread in the scheduler */
-    thread start = sched->next();
 
+
+    save_context(&saved);
+
+
+    /* pick the first thread in the scheduler */
+    thread start = RoundRobin->next();
 
     /* begin executing the first thread */
-    save_context(&saved);
     load_context(&(start->state));
 }
 
 void  lwp_stop(void)
 {
     thread tmp;
-    /* save the old context */
+
+    /* load the old context */
     load_context(&saved);
 
+    /* cleanup */
     if (in_exec != NULL)
     {
         free(in_exec->stack);
@@ -237,4 +246,52 @@ void  lwp_stop(void)
 
 }
 
+thread tid2thread(tid_t tid)
+{
+    thread tmp;
 
+    /* if the tid matches the currently executing thread, return it */
+    if (tid == in_exec->tid)
+    {
+        return in_exec;
+    }
+
+    tmp = curr_head;
+
+    /* iterate through the threads in the linked list */
+    while(tmp != NULL)
+    {
+        if (tmp->tid == tid)
+        {
+            return tmp;
+        }
+        tmp = tmp->lib_two;
+    }
+
+    /* return NULL if the thread with the tid isn't found */
+    return NULL;
+}
+
+\
+void lwp_set_scheduler(scheduler fun) 
+{
+    thread tmp;
+
+    tmp = curr_head;
+
+    /* unlink each thread from the current linked list */
+    /* and admit them into the new scheduler */
+    while(tmp != NULL)
+    {
+        tmp->lib_two = NULL;
+        fun->admit(tmp);
+    }
+
+    if (fun->init != NULL) 
+    {
+        fun->init();
+    }
+
+
+    RoundRobin = fun;
+}

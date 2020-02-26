@@ -1,3 +1,4 @@
+
 /*
  * snake:  This is a demonstration program to investigate the viability
  *         of a curses-based assignment.
@@ -32,7 +33,7 @@
 #include <signal.h>
 #include <sys/time.h>
 #include "snakes.h"
-#include "lwp.h"
+#include "lwp.c"
 
 #define MAXSNAKES  100
 #define INITIALSTACK 2048

@@ -4,12 +4,12 @@ CFLAGS  = -Wall -g -I .
 
 LD 	= gcc
 
-LDFLAGS  = -Wall -g -L/home/pn-cs453/Given/Asgn2
+LDFLAGS  = -Wall -g -L.
 
 PUBFILES =  README  hungrymain.c  libPLN.a  libsnakes.a  lwp.h\
 	    numbersmain.c  snakemain.c  snakes.h
 
-TARGET =  pn-cs453@hornet:Given/asgn2
+TARGET =  .
 
 PROGS	= snakes nums hungry
 
@@ -36,13 +36,13 @@ clean:
 	rm -f $(OBJS) *~ TAGS
 
 snakes: snakemain.o libPLN.a libsnakes.a
-	$(LD) $(LDFLAGS) -o snakes snakemain.o -L. -lncurses -lsnakes -lPLN
+	$(LD) -o rs snakemain.c -L. -lPLN -lsnakes -lncurses
 
 hungry: hungrymain.o libPLN.a libsnakes.a
-	$(LD) $(LDFLAGS) -o hungry hungrymain.o -L. -lncurses -lsnakes -lPLN
+	$(LD) -o hs hungrymain.c -L. -lPLN -lsnakes -lncurses
 
 nums: numbersmain.o libPLN.a 
-	$(LD) $(LDFLAGS) -o nums numbersmain.o -L. -lPLN
+	$(LD) -o nums numbersmain.c -L. -lPLN -lsnakes
 
 hungrymain.o: lwp.h snakes.h
 
@@ -57,4 +57,5 @@ numbermain.o: lwp.h
 
 pub:
 	scp $(PUBFILES) $(TARGET)
+
 

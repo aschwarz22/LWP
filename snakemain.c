@@ -32,7 +32,7 @@
 #include <signal.h>
 #include <sys/time.h>
 #include "snakes.h"
-#include "lwp.h"
+#include "lwp.c"
 
 #define MAXSNAKES  100
 #define INITIALSTACK 2048
@@ -58,7 +58,8 @@ int main(int argc, char *argv[]){
   install_handler(SIGINT, (sigfun)kill_snake); /* SIGINT will kill a snake */
   install_handler(SIGQUIT,(sigfun)lwp_stop); /* SIGQUIT will stop the system */
 
-  start_windowing();            /* start up curses windowing */
+  
+ start_windowing();            /* start up curses windowing */
 
   /* Initialize Snakes */
   cnt = 0;

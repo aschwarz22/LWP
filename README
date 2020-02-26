@@ -1,21 +1,33 @@
-To compile the three test programs, be sure to link them with the 
-appropriate libraries:
+Authors:   Alon Schwarz, Ryan Hail
+Date:      2/25/2020
+Section:   CPE-453-09
+Professor: Dr. Pantoja
 
-  threaded counting:
+How to run:
 
-    gcc -o nums numbersmain.c -L. -lPLN -lsnakes
+Snakes:
 
-  hungrysnakes:
+$ make snakes
+$ ./rs
 
-    gcc -o hs hungrymain.c -L. -lPLN -lsnakes -lncurses
+Hungry:
 
-  randomsnakes:
+$ make hungry
+$ ./hs
 
-    gcc -o rs snakemain.c -L. -lPLN -lsnakes -lncurses
+Numbers:
 
-Each of the snake programs installs signal handlers such that
-SIGINT (^C) will kill a snake, and SIGQUIT (^\) will terminate
-threading.
+$ make nums
+$ ./nums
 
+There are a few warnings that pop up when compiling, but they are all caused by initializing the scheduler,
+which was done according to the specs.
 
+There are no bugs as far as we can tell, however we had some confusion concerning the schedulers.
+We have a default scheduler, RoundRobin. We initialized the scheduler with the default RoundRoubin scheduler
+functions included in lwp.c. We do not have a seperate scheduler file. 
+
+We also did not implement any other schedulers because no other non-preemptive schedulers were mentioned in class.
+
+The given example programs (hungrymain.c, snakemain.c, numbersmain.c) were modified to include "lwp.c" instead of "lwp.h".
 
